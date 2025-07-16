@@ -8,7 +8,7 @@ import Assignment from '../models/Assignment.js';
 import Poll from '../models/Poll.js';
 
 // Database connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bca-communication';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/bca-communication';
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -88,16 +88,6 @@ const createUsers = async () => {
         semester: '4',
         approved: true,
       },
-      {
-        name: 'Dr. Vikram Singh',
-        email: 'vikram.singh@bcacomm.edu',
-        password: await bcrypt.hash('faculty123', 10),
-        role: 'faculty',
-        subject: 'Computer Networks',
-        batch: '2024-2027',
-        semester: '2',
-        approved: true,
-      },
       
       // Student Users - 3rd Semester
       {
@@ -140,16 +130,6 @@ const createUsers = async () => {
         currentBatch: '2023-2026',
         approved: true,
       },
-      {
-        regdno: 'BCA230005',
-        name: 'Karan Joshi',
-        email: 'karan.joshi@student.bcacomm.edu',
-        password: await bcrypt.hash('student123', 10),
-        role: 'student',
-        currentSemester: '3',
-        currentBatch: '2023-2026',
-        approved: true,
-      },
       
       // Student Users - 4th Semester
       {
@@ -162,58 +142,16 @@ const createUsers = async () => {
         currentBatch: '2023-2026',
         approved: true,
       },
-      {
-        regdno: 'BCA220002',
-        name: 'Rohit Kumar',
-        email: 'rohit.kumar@student.bcacomm.edu',
-        password: await bcrypt.hash('student123', 10),
-        role: 'student',
-        currentSemester: '4',
-        currentBatch: '2023-2026',
-        approved: true,
-      },
       
-      // Student Users - 2nd Semester
+      // Pending User (for testing admin approval)
       {
         regdno: 'BCA240001',
-        name: 'Ananya Desai',
-        email: 'ananya.desai@student.bcacomm.edu',
-        password: await bcrypt.hash('student123', 10),
-        role: 'student',
-        currentSemester: '2',
-        currentBatch: '2024-2027',
-        approved: true,
-      },
-      {
-        regdno: 'BCA240002',
-        name: 'Siddharth Rao',
-        email: 'siddharth.rao@student.bcacomm.edu',
-        password: await bcrypt.hash('student123', 10),
-        role: 'student',
-        currentSemester: '2',
-        currentBatch: '2024-2027',
-        approved: true,
-      },
-      
-      // Pending Users (for testing admin approval)
-      {
-        regdno: 'BCA240003',
         name: 'Ravi Agarwal',
         email: 'ravi.agarwal@student.bcacomm.edu',
         password: await bcrypt.hash('student123', 10),
         role: 'student',
         currentSemester: '2',
         currentBatch: '2024-2027',
-        approved: false,
-      },
-      {
-        name: 'Dr. Meera Jain',
-        email: 'meera.jain@bcacomm.edu',
-        password: await bcrypt.hash('faculty123', 10),
-        role: 'faculty',
-        subject: 'Software Engineering',
-        batch: '2023-2026',
-        semester: '5',
         approved: false,
       },
     ];
@@ -282,22 +220,6 @@ const createGroups = async (users) => {
     });
     groups.push(webGroup);
     
-    // Computer Networks Group (2nd Semester)
-    const networkStudents = students.filter(s => s.currentSemester === '2');
-    const networkGroup = new Group({
-      name: 'Computer Networks - Sem 2',
-      description: 'Network protocols, TCP/IP, and network security',
-      subject: 'Computer Networks',
-      batch: '2024-2027',
-      semester: '2',
-      createdBy: faculty.find(f => f.subject === 'Computer Networks')._id,
-      members: [
-        { user: faculty.find(f => f.subject === 'Computer Networks')._id },
-        ...networkStudents.map(s => ({ user: s._id }))
-      ]
-    });
-    groups.push(networkGroup);
-    
     const createdGroups = await Group.insertMany(groups);
     
     // Update users' groups
@@ -341,33 +263,14 @@ const createMessages = async (users, groups) => {
       
       // Sample student messages
       if (groupStudents.length > 0) {
-        const studentMessage1 = new Message({
+        const studentMessage = new Message({
           sender: groupStudents[0]._id,
           group: group._id,
           content: 'Thank you for the welcome! Looking forward to learning.',
           type: 'text'
         });
-        messages.push(studentMessage1);
-        
-        if (groupStudents.length > 1) {
-          const studentMessage2 = new Message({
-            sender: groupStudents[1]._id,
-            group: group._id,
-            content: 'Could you please share the syllabus for this subject?',
-            type: 'text'
-          });
-          messages.push(studentMessage2);
-        }
+        messages.push(studentMessage);
       }
-      
-      // Faculty response
-      const syllabusMessage = new Message({
-        sender: groupFaculty._id,
-        group: group._id,
-        content: `I'll upload the syllabus and course outline shortly. Please check the assignments section for upcoming tasks.`,
-        type: 'text'
-      });
-      messages.push(syllabusMessage);
     }
     
     const createdMessages = await Message.insertMany(messages);
@@ -397,35 +300,27 @@ const createAssignments = async (users, groups) => {
     for (const group of groups) {
       const groupFaculty = faculty.find(f => f._id.equals(group.createdBy));
       
-      // Create assignment based on subject
       let assignmentData;
       switch (group.subject) {
         case 'Data Structures':
           assignmentData = {
             title: 'Implement Stack and Queue',
-            description: 'Write programs to implement stack and queue data structures using arrays and linked lists. Include all basic operations like push, pop, enqueue, dequeue.',
+            description: 'Write programs to implement stack and queue data structures using arrays and linked lists.',
             maxMarks: 50
           };
           break;
         case 'Database Management':
           assignmentData = {
             title: 'Database Design Project',
-            description: 'Design a database for a library management system. Create ER diagram, normalize tables, and write SQL queries for common operations.',
+            description: 'Design a database for a library management system. Create ER diagram and write SQL queries.',
             maxMarks: 60
           };
           break;
         case 'Web Development':
           assignmentData = {
             title: 'Responsive Website Development',
-            description: 'Create a responsive website for a restaurant using HTML, CSS, and JavaScript. Include menu display, contact form, and mobile-friendly design.',
+            description: 'Create a responsive website using HTML, CSS, and JavaScript.',
             maxMarks: 70
-          };
-          break;
-        case 'Computer Networks':
-          assignmentData = {
-            title: 'Network Protocol Analysis',
-            description: 'Analyze different network protocols (TCP, UDP, HTTP, FTP). Compare their features, use cases, and provide examples of implementation.',
-            maxMarks: 45
           };
           break;
         default:
@@ -473,7 +368,6 @@ const createPolls = async (users, groups) => {
     for (const group of groups) {
       const groupFaculty = faculty.find(f => f._id.equals(group.createdBy));
       
-      // Create subject-specific poll
       let pollData;
       switch (group.subject) {
         case 'Data Structures':
@@ -506,17 +400,6 @@ const createPolls = async (users, groups) => {
               { text: 'Node.js', votes: [] },
               { text: 'Vue.js', votes: [] },
               { text: 'Angular', votes: [] }
-            ]
-          };
-          break;
-        case 'Computer Networks':
-          pollData = {
-            question: 'Which network concept is most important for your career?',
-            options: [
-              { text: 'Network Security', votes: [] },
-              { text: 'Network Protocols', votes: [] },
-              { text: 'Network Administration', votes: [] },
-              { text: 'Cloud Networking', votes: [] }
             ]
           };
           break;
@@ -610,7 +493,7 @@ const seedDatabase = async () => {
     console.log('📊 Summary:');
     console.log(`   👥 Users: ${users.length}`);
     console.log(`   📚 Groups: ${groups.length}`);
-    console.log(`   💬 Messages: Sample messages created`);
+    console.log(`   💬 Messages: Created sample messages`);
     console.log(`   📝 Assignments: ${groups.length} assignments`);
     console.log(`   📊 Polls: ${groups.length} polls`);
     console.log('');
