@@ -60,6 +60,7 @@ export const createAssignment = async (req, res) => {
 
     res.status(201).json(populatedAssignment);
   } catch (error) {
+    console.error('Error creating assignment:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -71,10 +72,12 @@ export const getAssignments = async (req, res) => {
     const assignments = await Assignment.find({ group: groupId })
       .populate('createdBy', 'name email role')
       .populate('submissions.student', 'name email regdno')
+      .populate('submissions.gradedBy', 'name email role')
       .sort({ createdAt: -1 });
 
     res.json(assignments);
   } catch (error) {
+    console.error('Error fetching assignments:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -95,6 +98,7 @@ export const getAssignment = async (req, res) => {
 
     res.json(assignment);
   } catch (error) {
+    console.error('Error fetching assignment:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -103,13 +107,19 @@ export const submitAssignment = async (req, res) => {
   try {
     const { assignmentId } = req.params;
     
+    console.log('📝 Submitting assignment:', assignmentId);
+    console.log('👤 User:', req.user.userId);
+    console.log('📎 Files received:', req.files?.length || 0);
+
     const assignment = await Assignment.findById(assignmentId);
     if (!assignment) {
+      console.log('❌ Assignment not found');
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
     // Check if deadline has passed
     if (new Date() > assignment.deadline) {
+      console.log('⏰ Assignment deadline has passed');
       return res.status(400).json({ message: 'Assignment deadline has passed' });
     }
 
@@ -119,41 +129,70 @@ export const submitAssignment = async (req, res) => {
     );
 
     if (existingSubmission) {
+      console.log('⚠️ Assignment already submitted');
       return res.status(400).json({ message: 'Assignment already submitted' });
+    }
+
+    // Get user details for file naming
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
     let files = [];
     if (req.files && req.files.length > 0) {
-      const user = await User.findById(req.user.userId);
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0];
       const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
       
-      files = req.files.map(file => {
+      files = req.files.map((file, index) => {
         const fileExtension = path.extname(file.originalname);
-        const fileName = `${user.regdno}_${user.name}_assignment_${dateStr}_${timeStr}_${file.originalname}`;
+        const baseName = path.basename(file.originalname, fileExtension);
+        
+        // Create a more descriptive filename
+        const fileName = `${user.regdno || user._id}_${user.name.replace(/\s+/g, '_')}_${assignment.title.replace(/\s+/g, '_')}_${dateStr}_${timeStr}_${index + 1}${fileExtension}`;
+        
         return {
-          fileName,
-          fileUrl: `/uploads/${file.filename}`,
+          fileName: file.originalname, // Keep original name for display
+          fileUrl: `/uploads/${file.filename}`, // Server stored filename
           fileSize: file.size
         };
       });
+
+      console.log('✅ Files processed:', files.length);
+    } else {
+      console.log('❌ No files provided');
+      return res.status(400).json({ message: 'No files provided for submission' });
     }
 
-    assignment.submissions.push({
+    // Create submission
+    const newSubmission = {
       student: req.user.userId,
       files,
-      submittedAt: new Date()
-    });
+      submittedAt: new Date(),
+      grade: 0,
+      feedback: '',
+      graded: false
+    };
 
+    assignment.submissions.push(newSubmission);
     await assignment.save();
 
+    console.log('✅ Assignment submitted successfully');
+
+    // Populate and return updated assignment
     const updatedAssignment = await Assignment.findById(assignmentId)
       .populate('createdBy', 'name email role')
-      .populate('submissions.student', 'name email regdno');
+      .populate('submissions.student', 'name email regdno')
+      .populate('submissions.gradedBy', 'name email role');
 
-    res.json(updatedAssignment);
+    res.status(200).json({
+      message: 'Assignment submitted successfully',
+      assignment: updatedAssignment
+    });
+
   } catch (error) {
+    console.error('❌ Error submitting assignment:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -162,6 +201,8 @@ export const gradeAssignment = async (req, res) => {
   try {
     const { assignmentId, submissionId } = req.params;
     const { grade, feedback } = req.body;
+
+    console.log('📊 Grading assignment:', { assignmentId, submissionId, grade, feedback });
 
     const assignment = await Assignment.findById(assignmentId);
     if (!assignment) {
@@ -173,21 +214,34 @@ export const gradeAssignment = async (req, res) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
+    // Validate grade
+    if (grade < 0 || grade > assignment.maxMarks) {
+      return res.status(400).json({ 
+        message: `Grade must be between 0 and ${assignment.maxMarks}` 
+      });
+    }
+
     submission.grade = grade;
-    submission.feedback = feedback;
+    submission.feedback = feedback || '';
     submission.graded = true;
     submission.gradedAt = new Date();
     submission.gradedBy = req.user.userId;
 
     await assignment.save();
 
+    console.log('✅ Assignment graded successfully');
+
     const updatedAssignment = await Assignment.findById(assignmentId)
       .populate('createdBy', 'name email role')
       .populate('submissions.student', 'name email regdno')
       .populate('submissions.gradedBy', 'name email role');
 
-    res.json(updatedAssignment);
+    res.json({
+      message: 'Assignment graded successfully',
+      assignment: updatedAssignment
+    });
   } catch (error) {
+    console.error('❌ Error grading assignment:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -199,7 +253,8 @@ export const getGradeSheet = async (req, res) => {
     const assignment = await Assignment.findById(assignmentId)
       .populate('createdBy', 'name email role')
       .populate('group', 'name subject batch semester')
-      .populate('submissions.student', 'name email regdno');
+      .populate('submissions.student', 'name email regdno')
+      .populate('submissions.gradedBy', 'name email role');
 
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });
@@ -213,18 +268,24 @@ export const getGradeSheet = async (req, res) => {
       maxMarks: assignment.maxMarks,
       totalSubmissions: assignment.submissions.length,
       gradedSubmissions: assignment.submissions.filter(sub => sub.graded).length,
+      deadline: assignment.deadline,
+      createdAt: assignment.createdAt,
       submissions: assignment.submissions.map(sub => ({
         studentName: sub.student.name,
         regdno: sub.student.regdno,
+        email: sub.student.email,
         submittedAt: sub.submittedAt,
         grade: sub.grade,
         feedback: sub.feedback,
-        graded: sub.graded
+        graded: sub.graded,
+        gradedAt: sub.gradedAt,
+        filesCount: sub.files.length
       }))
     };
 
     res.json(gradeSheet);
   } catch (error) {
+    console.error('Error generating grade sheet:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

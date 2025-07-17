@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Clock, FileText, Download, Upload, Star, X, Paperclip } from 'lucide-react';
+import { Plus, Clock, FileText, Download, Upload, Star, X, Paperclip, ExternalLink, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { assignmentsAPI, groupsAPI } from '../services/api';
 import { Assignment, Group } from '../types';
@@ -12,7 +12,9 @@ const Assignments: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [submissionLoading, setSubmissionLoading] = useState(false);
 
@@ -24,10 +26,7 @@ const Assignments: React.FC = () => {
     maxMarks: 100,
   });
 
-  const [gradeData, setGradeData] = useState({
-    grade: 0,
-    feedback: '',
-  });
+  const [gradeData, setGradeData] = useState<{[key: string]: {grade: number, feedback: string}}>({});
 
   useEffect(() => {
     fetchData();
@@ -78,6 +77,7 @@ const Assignments: React.FC = () => {
         maxMarks: 100,
       });
       fetchData();
+      alert('Assignment created successfully!');
     } catch (error) {
       console.error('Error creating assignment:', error);
       alert('Failed to create assignment. Please try again.');
@@ -94,7 +94,6 @@ const Assignments: React.FC = () => {
     setSubmissionLoading(true);
     const formData = new FormData();
     
-    // Append all selected files
     selectedFiles.forEach((file) => {
       formData.append('files', file);
     });
@@ -116,7 +115,6 @@ const Assignments: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Error submitting assignment:', error);
       
-      // More detailed error handling
       if (error.response?.status === 400) {
         alert(error.response.data.message || 'Assignment deadline has passed or already submitted.');
       } else if (error.response?.status === 404) {
@@ -139,20 +137,31 @@ const Assignments: React.FC = () => {
   };
 
   const handleGradeSubmission = async (assignmentId: string, submissionId: string) => {
-    if (!gradeData.grade || gradeData.grade < 0) {
+    const gradeInfo = gradeData[submissionId];
+    if (!gradeInfo || gradeInfo.grade < 0) {
       alert('Please enter a valid grade.');
       return;
     }
 
     try {
-      await assignmentsAPI.gradeAssignment(assignmentId, submissionId, gradeData);
-      setGradeData({ grade: 0, feedback: '' });
+      await assignmentsAPI.gradeAssignment(assignmentId, submissionId, gradeInfo);
+      setGradeData(prev => ({ ...prev, [submissionId]: { grade: 0, feedback: '' } }));
       fetchData();
       alert('Grade submitted successfully!');
     } catch (error) {
       console.error('Error grading assignment:', error);
       alert('Failed to submit grade. Please try again.');
     }
+  };
+
+  const updateGradeData = (submissionId: string, field: 'grade' | 'feedback', value: string | number) => {
+    setGradeData(prev => ({
+      ...prev,
+      [submissionId]: {
+        ...prev[submissionId] || { grade: 0, feedback: '' },
+        [field]: value
+      }
+    }));
   };
 
   const downloadGradeSheet = async (assignmentId: string) => {
@@ -208,7 +217,7 @@ const Assignments: React.FC = () => {
           submission
         };
       }
-      return { text: 'Not submitted', color: 'text-gray-600', submitted: false };
+      return { text: 'Not submitted', color: 'text-red-600', submitted: false };
     }
     return { 
       text: `${assignment.submissions.length} submissions`, 
@@ -217,12 +226,28 @@ const Assignments: React.FC = () => {
     };
   };
 
+  const viewSubmissionFiles = (submission: any) => {
+    setSelectedSubmission(submission);
+    setShowSubmissionModal(true);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   const canCreateAssignments = user?.role === 'faculty' || user?.role === 'admin' || user?.role === 'hod';
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">Loading assignments...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading assignments...</p>
+        </div>
       </div>
     );
   }
@@ -307,19 +332,44 @@ const Assignments: React.FC = () => {
                 {isStudent && submissionStatus.submitted && submissionStatus.submission && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-900 mb-2">Your Submission</h4>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 space-y-1">
                       <p>Submitted: {format(new Date(submissionStatus.submission.submittedAt), 'MMM dd, yyyy HH:mm')}</p>
                       <p>Files: {submissionStatus.submission.files.length}</p>
-                      {submissionStatus.submission.graded && (
-                        <>
-                          <p className="text-green-600 font-medium">
+                      {submissionStatus.submission.graded ? (
+                        <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded">
+                          <p className="text-green-800 font-medium">
                             Grade: {submissionStatus.submission.grade}/{assignment.maxMarks}
                           </p>
                           {submissionStatus.submission.feedback && (
-                            <p>Feedback: {submissionStatus.submission.feedback}</p>
+                            <p className="text-green-700 mt-1">Feedback: {submissionStatus.submission.feedback}</p>
                           )}
-                        </>
+                          <p className="text-green-600 text-xs mt-1">
+                            Graded on: {format(new Date(submissionStatus.submission.gradedAt), 'MMM dd, yyyy HH:mm')}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-blue-600 font-medium">Awaiting grade</p>
                       )}
+                      
+                      {/* File list for student */}
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-gray-700 mb-1">Submitted Files:</p>
+                        <div className="space-y-1">
+                          {submissionStatus.submission.files.map((file: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between text-xs bg-white p-2 rounded border">
+                              <span className="truncate">{file.fileName}</span>
+                              <a
+                                href={`http://localhost:3001${file.fileUrl}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 ml-2"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -327,33 +377,47 @@ const Assignments: React.FC = () => {
                 {/* Submissions for Faculty */}
                 {canCreateAssignments && assignment.submissions.length > 0 && (
                   <div className="mt-4 border-t pt-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-3">Submissions</h4>
-                    <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-gray-900 mb-3">
+                      Submissions ({assignment.submissions.length})
+                    </h4>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
                       {assignment.submissions.map((submission) => (
                         <div
                           key={submission._id}
                           className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                         >
-                          <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-3 flex-1">
                             <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                               <span className="text-white text-xs font-medium">
                                 {submission.student.name.charAt(0).toUpperCase()}
                               </span>
                             </div>
-                            <div>
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900">
                                 {submission.student.name}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {submission.student.regdno} • Submitted: {format(new Date(submission.submittedAt), 'MMM dd, yyyy HH:mm')}
+                                {submission.student.regdno} • Submitted: {format(new Date(submission.submittedAt), 'MMM dd, HH:mm')}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Files: {submission.files.length}
                               </p>
                             </div>
                           </div>
+                          
                           <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => viewSubmissionFiles(submission)}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View Files</span>
+                            </button>
+                            
                             {submission.graded ? (
-                              <div className="flex items-center space-x-1">
-                                <Star className="w-4 h-4 text-yellow-500" />
-                                <span className="text-sm font-medium text-green-600">
+                              <div className="flex items-center space-x-1 text-green-600">
+                                <Star className="w-4 h-4" />
+                                <span className="text-sm font-medium">
                                   {submission.grade}/{assignment.maxMarks}
                                 </span>
                               </div>
@@ -364,16 +428,16 @@ const Assignments: React.FC = () => {
                                   max={assignment.maxMarks}
                                   min="0"
                                   placeholder="Grade"
-                                  value={gradeData.grade}
-                                  onChange={(e) => setGradeData({ ...gradeData, grade: parseInt(e.target.value) || 0 })}
+                                  value={gradeData[submission._id]?.grade || ''}
+                                  onChange={(e) => updateGradeData(submission._id, 'grade', parseInt(e.target.value) || 0)}
                                   className="w-16 px-2 py-1 text-sm border rounded"
                                 />
                                 <input
                                   type="text"
                                   placeholder="Feedback"
-                                  value={gradeData.feedback}
-                                  onChange={(e) => setGradeData({ ...gradeData, feedback: e.target.value })}
-                                  className="w-32 px-2 py-1 text-sm border rounded"
+                                  value={gradeData[submission._id]?.feedback || ''}
+                                  onChange={(e) => updateGradeData(submission._id, 'feedback', e.target.value)}
+                                  className="w-24 px-2 py-1 text-sm border rounded"
                                 />
                                 <button
                                   onClick={() => handleGradeSubmission(assignment._id, submission._id)}
@@ -392,6 +456,16 @@ const Assignments: React.FC = () => {
               </div>
             );
           })}
+
+          {assignments.length === 0 && (
+            <div className="text-center py-12">
+              <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No assignments yet</h3>
+              <p className="text-gray-500">
+                {canCreateAssignments ? 'Create your first assignment to get started.' : 'Assignments will appear here when faculty creates them.'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Create Assignment Modal */}
@@ -524,24 +598,26 @@ const Assignments: React.FC = () => {
                   {selectedFiles.length > 0 && (
                     <div className="mt-3 space-y-2">
                       <p className="text-sm font-medium text-gray-700">Selected Files:</p>
-                      {selectedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <div className="flex items-center space-x-2">
-                            <Paperclip className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-900 truncate">{file.name}</span>
-                            <span className="text-xs text-gray-500">
-                              ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                            </span>
+                      <div className="max-h-40 overflow-y-auto space-y-2">
+                        {selectedFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <div className="flex items-center space-x-2 flex-1 min-w-0">
+                              <Paperclip className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm text-gray-900 truncate">{file.name}</span>
+                              <span className="text-xs text-gray-500 flex-shrink-0">
+                                ({formatFileSize(file.size)})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(index)}
+                              className="text-red-600 hover:text-red-800 ml-2"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeFile(index)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -567,6 +643,103 @@ const Assignments: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* View Submission Files Modal */}
+        {showSubmissionModal && selectedSubmission && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Submission Files - {selectedSubmission.student.name}
+                </h2>
+                <button
+                  onClick={() => setShowSubmissionModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-900">Student: {selectedSubmission.student.name}</p>
+                    <p className="text-gray-600">Reg No: {selectedSubmission.student.regdno}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      Submitted: {format(new Date(selectedSubmission.submittedAt), 'MMM dd, yyyy HH:mm')}
+                    </p>
+                    <p className="text-gray-600">Files: {selectedSubmission.files.length}</p>
+                  </div>
+                </div>
+                
+                {selectedSubmission.graded && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+                    <p className="text-green-800 font-medium">
+                      Grade: {selectedSubmission.grade}/{selectedAssignment?.maxMarks}
+                    </p>
+                    {selectedSubmission.feedback && (
+                      <p className="text-green-700 mt-1">Feedback: {selectedSubmission.feedback}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-gray-900">Submitted Files</h3>
+                {selectedSubmission.files.length > 0 ? (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {selectedSubmission.files.map((file: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <FileText className="w-5 h-5 text-blue-500" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{file.fileName}</p>
+                            <p className="text-xs text-gray-500">{formatFileSize(file.fileSize)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <a
+                            href={`http://localhost:3001${file.fileUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            <span>View</span>
+                          </a>
+                          <a
+                            href={`http://localhost:3001${file.fileUrl}`}
+                            download={file.fileName}
+                            className="flex items-center space-x-1 px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No files submitted</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setShowSubmissionModal(false)}
+                  className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
