@@ -10,6 +10,7 @@ const Dashboard: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [recentAssignments, setRecentAssignments] = useState<Assignment[]>([]);
   const [recentPolls, setRecentPolls] = useState<Poll[]>([]);
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalGroups: 0,
     totalAssignments: 0,
@@ -58,7 +59,8 @@ const Dashboard: React.FC = () => {
       // Calculate stats
       const pendingSubmissions = allAssignments.filter(assignment => {
         if (user?.role === 'student') {
-          return !assignment.submissions.some(sub => sub.student._id === user._id);
+          return !assignment.submissions.some(sub => sub.student._id === user._id) &&
+                 new Date(assignment.deadline) > new Date();
         }
         return 0;
       }).length;
@@ -71,6 +73,8 @@ const Dashboard: React.FC = () => {
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -80,184 +84,324 @@ const Dashboard: React.FC = () => {
     const diff = date.getTime() - now.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
     
-    if (days < 0) return 'Overdue';
+    if (diff < 0) return 'Overdue';
     if (days === 0) return 'Due today';
     if (days === 1) return 'Due tomorrow';
     return `Due in ${days} days`;
   };
 
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <div className="text-sm text-gray-500">
-          Welcome back, {user?.name}!
+  const getSubmissionStatus = (assignment: Assignment) => {
+    if (user?.role === 'student') {
+      const hasSubmitted = assignment.submissions.some(sub => sub.student._id === user._id);
+      return hasSubmitted ? 'Submitted' : 'Not submitted';
+    }
+    return `${assignment.submissions.length} submissions`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Total Groups</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalGroups}</p>
-            </div>
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Users className="w-6 h-6 text-blue-600" />
-            </div>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600">Welcome back, {user?.name}!</p>
+          </div>
+          <div className="text-sm text-gray-500">
+            {user?.role === 'student' ? `${user.regdno} • ${user.currentBatch}` : user?.role}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Assignments</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalAssignments}</p>
-            </div>
-            <div className="p-3 bg-green-100 rounded-lg">
-              <BookOpen className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Polls</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalPolls}</p>
-            </div>
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <BarChart3 className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        {user?.role === 'student' && (
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Pending Submissions</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingSubmissions}</p>
+                <p className="text-sm text-gray-600">Total Groups</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalGroups}</p>
               </div>
-              <div className="p-3 bg-yellow-100 rounded-lg">
-                <Clock className="w-6 h-6 text-yellow-600" />
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Users className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Assignments</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalAssignments}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <BookOpen className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Polls</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalPolls}</p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <BarChart3 className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </div>
+
+          {user?.role === 'student' && (
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Pending Submissions</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.pendingSubmissions}</p>
+                </div>
+                <div className="p-3 bg-yellow-100 rounded-lg">
+                  <Clock className="w-6 h-6 text-yellow-600" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Groups */}
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Your Groups</h2>
+                <Link to="/groups" className="text-sm text-blue-600 hover:text-blue-500">
+                  View all
+                </Link>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {groups.slice(0, 5).map((group) => (
+                  <Link
+                    key={group._id}
+                    to={`/chat/${group._id}`}
+                    className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-medium text-sm">
+                        {group.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {group.name}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {group.subject} • {group.members.length} members
+                      </p>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      <MessageCircle className="w-4 h-4" />
+                    </div>
+                  </Link>
+                ))}
+                {groups.length === 0 && (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No groups joined yet</p>
+                    <Link 
+                      to="/groups" 
+                      className="text-sm text-blue-600 hover:text-blue-700 mt-1 inline-block"
+                    >
+                      Browse groups
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Assignments */}
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Recent Assignments</h2>
+                <Link to="/assignments" className="text-sm text-blue-600 hover:text-blue-500">
+                  View all
+                </Link>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {recentAssignments.map((assignment) => (
+                  <div
+                    key={assignment._id}
+                    className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {assignment.title}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {formatDeadline(assignment.deadline)}
+                      </p>
+                      {user?.role === 'student' && (
+                        <p className="text-xs text-blue-600">
+                          {getSubmissionStatus(assignment)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 text-right flex-shrink-0">
+                      <div>{assignment.maxMarks} pts</div>
+                      {user?.role !== 'student' && (
+                        <div>{assignment.submissions.length} submissions</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {recentAssignments.length === 0 && (
+                  <div className="text-center py-8">
+                    <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No assignments yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Polls */}
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-6 border-b">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Recent Polls</h2>
+              <Link to="/polls" className="text-sm text-blue-600 hover:text-blue-500">
+                View all
+              </Link>
+            </div>
+          </div>
+          <div className="p-6">
+            {recentPolls.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recentPolls.map((poll) => (
+                  <div key={poll._id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
+                        {poll.question}
+                      </h3>
+                      <BarChart3 className="w-4 h-4 text-purple-500 flex-shrink-0 ml-2" />
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 mb-3">
+                      Created by {poll.createdBy.name}
+                    </p>
+                    
+                    <div className="space-y-2">
+                      {poll.options.slice(0, 2).map((option, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <span className="text-xs text-gray-600 truncate flex-1">
+                            {option.text}
+                          </span>
+                          <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                            {option.votes.length} votes
+                          </span>
+                        </div>
+                      ))}
+                      {poll.options.length > 2 && (
+                        <p className="text-xs text-gray-400">
+                          +{poll.options.length - 2} more options
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">No polls yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Actions for Faculty */}
+        {(user?.role === 'faculty' || user?.role === 'admin' || user?.role === 'hod') && (
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link
+                  to="/groups"
+                  className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Users className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Create Group</p>
+                    <p className="text-xs text-gray-500">Start a new class group</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/assignments"
+                  className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <BookOpen className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">New Assignment</p>
+                    <p className="text-xs text-gray-500">Create assignment</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/polls"
+                  className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <BarChart3 className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Create Poll</p>
+                    <p className="text-xs text-gray-500">Get student feedback</p>
+                  </div>
+                </Link>
+
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin"
+                    className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="p-2 bg-red-100 rounded-lg">
+                      <Users className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Admin Panel</p>
+                      <p className="text-xs text-gray-500">Manage users</p>
+                    </div>
+                  </Link>
+                )}
               </div>
             </div>
           </div>
         )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Groups */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="p-6 border-b">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Recent Groups</h2>
-              <Link to="/groups" className="text-sm text-blue-600 hover:text-blue-500">
-                View all
-              </Link>
-            </div>
-          </div>
-          <div className="p-6">
-            <div className="space-y-3">
-              {groups.slice(0, 5).map((group) => (
-                <Link
-                  key={group._id}
-                  to={`/chat/${group._id}`}
-                  className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <MessageCircle className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {group.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {group.subject} • {group.members.length} members
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Assignments */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="p-6 border-b">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Recent Assignments</h2>
-              <Link to="/assignments" className="text-sm text-blue-600 hover:text-blue-500">
-                View all
-              </Link>
-            </div>
-          </div>
-          <div className="p-6">
-            <div className="space-y-3">
-              {recentAssignments.map((assignment) => (
-                <div
-                  key={assignment._id}
-                  className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {assignment.title}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatDeadline(assignment.deadline)}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <span className="text-xs text-gray-500">
-                      {assignment.submissions.length} submissions
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Polls */}
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Polls</h2>
-            <Link to="/polls" className="text-sm text-blue-600 hover:text-blue-500">
-              View all
-            </Link>
-          </div>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentPolls.map((poll) => (
-              <div key={poll._id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                <h3 className="text-sm font-medium text-gray-900 mb-2">
-                  {poll.question}
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  Created by {poll.createdBy.name}
-                </p>
-                <div className="space-y-2">
-                  {poll.options.map((option, index) => (
-                    <div key={index} className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600">{option.text}</span>
-                      <span className="text-xs text-gray-500">
-                        {option.votes.length} votes
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
