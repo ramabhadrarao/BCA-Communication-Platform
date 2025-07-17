@@ -269,7 +269,7 @@ const Assignments: React.FC = () => {
         </div>
 
         {/* Assignments List */}
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
           {assignments.map((assignment) => {
             const deadlineStatus = formatDeadline(assignment.deadline);
             const submissionStatus = getSubmissionStatus(assignment);
@@ -277,7 +277,7 @@ const Assignments: React.FC = () => {
             const canSubmit = isStudent && !submissionStatus.submitted && new Date(assignment.deadline) > new Date();
 
             return (
-              <div key={assignment._id} className="bg-white rounded-lg shadow-sm border p-6">
+              <div key={assignment._id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">{assignment.title}</h3>
@@ -319,7 +319,7 @@ const Assignments: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <FileText className="w-4 h-4 text-gray-400" />
-                    <span className={`text-sm ${submissionStatus.color}`}>
+                    <span className={`text-sm font-medium ${submissionStatus.color}`}>
                       {submissionStatus.text}
                     </span>
                   </div>
@@ -380,7 +380,7 @@ const Assignments: React.FC = () => {
                     <h4 className="text-sm font-medium text-gray-900 mb-3">
                       Submissions ({assignment.submissions.length})
                     </h4>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
                       {assignment.submissions.map((submission) => (
                         <div
                           key={submission._id}
@@ -598,7 +598,7 @@ const Assignments: React.FC = () => {
                   {selectedFiles.length > 0 && (
                     <div className="mt-3 space-y-2">
                       <p className="text-sm font-medium text-gray-700">Selected Files:</p>
-                      <div className="max-h-40 overflow-y-auto space-y-2">
+                      <div className="max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
                         {selectedFiles.map((file, index) => (
                           <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                             <div className="flex items-center space-x-2 flex-1 min-w-0">
@@ -692,7 +692,7 @@ const Assignments: React.FC = () => {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-gray-900">Submitted Files</h3>
                 {selectedSubmission.files.length > 0 ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
                     {selectedSubmission.files.map((file: any, index: number) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
                         <div className="flex items-center space-x-3 flex-1 min-w-0">

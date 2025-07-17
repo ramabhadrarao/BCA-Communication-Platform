@@ -42,7 +42,7 @@ const LoginForm: React.FC = () => {
           <div className="flex justify-center mb-4">
             <GraduationCap className="w-12 h-12 text-blue-600" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900">BCA Communication</h2>
+          <h2 className="text-3xl font-bold text-gray-900">Communication</h2>
           <p className="mt-2 text-sm text-gray-600">Sign in to your account</p>
         </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageCircle, Users, BookOpen, BarChart3, Clock, FileText } from 'lucide-react';
+import { MessageCircle, Users, BookOpen, BarChart3, Clock, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { groupsAPI, assignmentsAPI, pollsAPI } from '../services/api';
 import { Group, Assignment, Poll } from '../types';
@@ -84,18 +84,55 @@ const Dashboard: React.FC = () => {
     const diff = date.getTime() - now.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
     
-    if (diff < 0) return 'Overdue';
-    if (days === 0) return 'Due today';
-    if (days === 1) return 'Due tomorrow';
-    return `Due in ${days} days`;
+    if (diff < 0) return { text: 'Overdue', color: 'text-red-600', icon: AlertCircle };
+    if (days === 0) return { text: 'Due today', color: 'text-yellow-600', icon: Clock };
+    if (days === 1) return { text: 'Due tomorrow', color: 'text-yellow-600', icon: Clock };
+    return { text: `Due in ${days} days`, color: 'text-green-600', icon: CheckCircle };
   };
 
   const getSubmissionStatus = (assignment: Assignment) => {
     if (user?.role === 'student') {
-      const hasSubmitted = assignment.submissions.some(sub => sub.student._id === user._id);
-      return hasSubmitted ? 'Submitted' : 'Not submitted';
+      // Check if the current user has submitted this assignment
+      const userSubmission = assignment.submissions.find(
+        submission => submission.student._id === user._id
+      );
+      
+      if (userSubmission) {
+        if (userSubmission.graded) {
+          return {
+            text: `Graded: ${userSubmission.grade}/${assignment.maxMarks}`,
+            color: 'text-green-600',
+            status: 'graded',
+            submission: userSubmission
+          };
+        } else {
+          return {
+            text: 'Submitted - Awaiting Grade',
+            color: 'text-blue-600',
+            status: 'submitted',
+            submission: userSubmission
+          };
+        }
+      } else {
+        // Check if deadline has passed
+        const isOverdue = new Date() > new Date(assignment.deadline);
+        return {
+          text: isOverdue ? 'Not Submitted (Overdue)' : 'Not Submitted',
+          color: isOverdue ? 'text-red-600' : 'text-orange-600',
+          status: 'not_submitted'
+        };
+      }
+    } else {
+      // For faculty/admin
+      const totalSubmissions = assignment.submissions.length;
+      const gradedSubmissions = assignment.submissions.filter(sub => sub.graded).length;
+      
+      return {
+        text: `${totalSubmissions} submissions (${gradedSubmissions} graded)`,
+        color: 'text-blue-600',
+        status: 'faculty_view'
+      };
     }
-    return `${assignment.submissions.length} submissions`;
   };
 
   if (loading) {
@@ -125,7 +162,7 @@ const Dashboard: React.FC = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Groups</p>
@@ -137,7 +174,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Assignments</p>
@@ -149,7 +186,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Polls</p>
@@ -162,14 +199,14 @@ const Dashboard: React.FC = () => {
           </div>
 
           {user?.role === 'student' && (
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Pending Submissions</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.pendingSubmissions}</p>
                 </div>
-                <div className="p-3 bg-yellow-100 rounded-lg">
-                  <Clock className="w-6 h-6 text-yellow-600" />
+                <div className={`p-3 rounded-lg ${stats.pendingSubmissions > 0 ? 'bg-yellow-100' : 'bg-green-100'}`}>
+                  <Clock className={`w-6 h-6 ${stats.pendingSubmissions > 0 ? 'text-yellow-600' : 'text-green-600'}`} />
                 </div>
               </div>
             </div>
@@ -189,7 +226,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="p-6">
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-80 overflow-y-auto custom-scrollbar">
                 {groups.slice(0, 5).map((group) => (
                   <Link
                     key={group._id}
@@ -241,36 +278,54 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="p-6">
-              <div className="space-y-4">
-                {recentAssignments.map((assignment) => (
-                  <div
-                    key={assignment._id}
-                    className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {assignment.title}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {formatDeadline(assignment.deadline)}
-                      </p>
-                      {user?.role === 'student' && (
-                        <p className="text-xs text-blue-600">
-                          {getSubmissionStatus(assignment)}
+              <div className="space-y-4 max-h-80 overflow-y-auto custom-scrollbar">
+                {recentAssignments.map((assignment) => {
+                  const submissionStatus = getSubmissionStatus(assignment);
+                  const deadlineStatus = formatDeadline(assignment.deadline);
+                  
+                  return (
+                    <Link
+                      key={assignment._id}
+                      to="/assignments"
+                      className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {assignment.title}
                         </p>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 text-right flex-shrink-0">
-                      <div>{assignment.maxMarks} pts</div>
-                      {user?.role !== 'student' && (
-                        <div>{assignment.submissions.length} submissions</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className={`text-xs ${deadlineStatus.color}`}>
+                            {deadlineStatus.text}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className={`text-xs ${submissionStatus.color} font-medium`}>
+                            {submissionStatus.text}
+                          </span>
+                          {submissionStatus.status === 'graded' && submissionStatus.submission && (
+                            <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded">
+                              {submissionStatus.submission.grade}/{assignment.maxMarks}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 text-right flex-shrink-0">
+                        <div className="flex flex-col items-end">
+                          <span>{assignment.maxMarks} pts</span>
+                          {user?.role !== 'student' && (
+                            <span className="text-blue-600">{assignment.submissions.length} submissions</span>
+                          )}
+                          {user?.role === 'student' && submissionStatus.status === 'not_submitted' && (
+                            <span className="text-orange-600 font-medium">Action needed</span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
                 {recentAssignments.length === 0 && (
                   <div className="text-center py-8">
                     <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -294,7 +349,7 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="p-6">
             {recentPolls.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-80 overflow-y-auto custom-scrollbar">
                 {recentPolls.map((poll) => (
                   <div key={poll._id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-start justify-between mb-3">
