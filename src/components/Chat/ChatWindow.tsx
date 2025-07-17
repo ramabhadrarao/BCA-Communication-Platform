@@ -14,7 +14,8 @@ import {
   X,
   Camera,
   Mic,
-  Smile
+  Smile,
+  Youtube
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -74,12 +75,24 @@ const ChatWindow: React.FC = () => {
       
       if (socket) {
         socket.emit('join-group', groupId);
-        socket.on('new-message', (message: Message) => {
-          setMessages(prev => [...prev, message]);
-        });
+        
+        const handleNewMessage = (newMessage: Message) => {
+          console.log('📨 Received new message:', newMessage);
+          setMessages(prev => {
+            // Check if message already exists to avoid duplicates
+            const messageExists = prev.some(msg => msg._id === newMessage._id);
+            if (messageExists) {
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
+        };
+
+        socket.on('new-message', handleNewMessage);
+        
         return () => {
           socket.emit('leave-group', groupId);
-          socket.off('new-message');
+          socket.off('new-message', handleNewMessage);
         };
       }
     }
@@ -127,20 +140,27 @@ const ChatWindow: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const sendMessage = async (content: string, file?: File, type?: string) => {
+  const sendMessage = async (content: string, file?: File, type?: string, youtubeUrl?: string) => {
     if (!content.trim() && !file) return;
 
     const formData = new FormData();
     formData.append('groupId', groupId!);
     formData.append('content', content);
     formData.append('type', type || 'text');
+    
     if (file) {
       formData.append('file', file);
+    }
+    
+    if (youtubeUrl) {
+      formData.append('youtubeUrl', youtubeUrl);
     }
 
     try {
       const response = await messagesAPI.sendMessage(formData);
       const newMessage = response.data;
+      
+      // Add message to local state immediately
       setMessages(prev => [...prev, newMessage]);
       
       if (socket) {
@@ -148,6 +168,7 @@ const ChatWindow: React.FC = () => {
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
     }
   };
 
@@ -166,7 +187,8 @@ const ChatWindow: React.FC = () => {
   };
 
   const handleFileUpload = (file: File, type: string) => {
-    sendMessage('', file, type);
+    console.log('📎 Uploading file:', file.name, 'Type:', type);
+    sendMessage(file.name, file, type);
     setShowAttachments(false);
   };
 
@@ -176,6 +198,20 @@ const ChatWindow: React.FC = () => {
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleYoutubeShare = () => {
+    const url = prompt('Enter YouTube URL:');
+    if (url && url.trim()) {
+      // Validate YouTube URL
+      const youtubeRegex = /^(https?\:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
+      if (youtubeRegex.test(url)) {
+        sendMessage(url, undefined, 'youtube', url);
+      } else {
+        alert('Please enter a valid YouTube URL');
+      }
+    }
+    setShowAttachments(false);
   };
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
@@ -192,8 +228,10 @@ const ChatWindow: React.FC = () => {
       setShowAssignmentModal(false);
       setNewAssignment({ title: '', description: '', deadline: '', maxMarks: 100 });
       fetchMessages(); // Refresh messages to show new assignment
+      alert('Assignment created successfully!');
     } catch (error) {
       console.error('Error creating assignment:', error);
+      alert('Failed to create assignment. Please try again.');
     }
   };
 
@@ -210,8 +248,18 @@ const ChatWindow: React.FC = () => {
       setShowPollModal(false);
       setNewPoll({ question: '', options: ['', ''], multipleChoice: false, expiresAt: '' });
       fetchMessages(); // Refresh messages to show new poll
+      alert('Poll created successfully!');
     } catch (error) {
       console.error('Error creating poll:', error);
+      alert('Failed to create poll. Please try again.');
+    }
+  };
+
+  const handleMessageClick = (message: Message) => {
+    if (message.type === 'assignment' && message.assignment) {
+      navigate('/assignments');
+    } else if (message.type === 'poll' && message.poll) {
+      navigate('/polls');
     }
   };
 
@@ -311,11 +359,16 @@ const ChatWindow: React.FC = () => {
         }}
       >
         {messages.map((message) => (
-          <MessageBubble
+          <div 
             key={message._id}
-            message={message}
-            isOwnMessage={message.sender._id === user?._id}
-          />
+            onClick={() => handleMessageClick(message)}
+            className={message.type === 'assignment' || message.type === 'poll' ? 'cursor-pointer' : ''}
+          >
+            <MessageBubble
+              message={message}
+              isOwnMessage={message.sender._id === user?._id}
+            />
+          </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -340,6 +393,14 @@ const ChatWindow: React.FC = () => {
               >
                 <FileText className="w-6 h-6 text-blue-600" />
                 <span className="text-xs text-blue-600">File</span>
+              </button>
+
+              <button
+                onClick={handleYoutubeShare}
+                className="flex flex-col items-center space-y-1 p-3 bg-red-100 rounded-lg hover:bg-red-200 transition-colors"
+              >
+                <Youtube className="w-6 h-6 text-red-600" />
+                <span className="text-xs text-red-600">YouTube</span>
               </button>
               
               {canCreateContent && (
@@ -408,7 +469,14 @@ const ChatWindow: React.FC = () => {
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) handleFileUpload(file, 'file');
+          if (file) {
+            console.log('📁 File selected:', file);
+            handleFileUpload(file, 'file');
+          }
+          // Reset input
+          if (e.target) {
+            e.target.value = '';
+          }
         }}
       />
 
@@ -419,7 +487,14 @@ const ChatWindow: React.FC = () => {
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) handleFileUpload(file, 'image');
+          if (file) {
+            console.log('🖼️ Image selected:', file);
+            handleFileUpload(file, 'image');
+          }
+          // Reset input
+          if (e.target) {
+            e.target.value = '';
+          }
         }}
       />
 

@@ -25,7 +25,8 @@ const server = createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || "http://localhost:5173",
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -37,8 +38,32 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files with proper headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    // Set proper MIME types for different file types
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (path.endsWith('.gif')) {
+      res.setHeader('Content-Type', 'image/gif');
+    } else if (path.endsWith('.webp')) {
+      res.setHeader('Content-Type', 'image/webp');
+    } else if (path.endsWith('.mp4')) {
+      res.setHeader('Content-Type', 'video/mp4');
+    } else if (path.endsWith('.mp3')) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+    } else if (path.endsWith('.pdf')) {
+      res.setHeader('Content-Type', 'application/pdf');
+    }
+    
+    // Allow cross-origin requests for media files
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+}));
 
 // MongoDB connection with better error handling
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/bca-communication';
@@ -94,8 +119,30 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    uploadsPath: path.join(__dirname, 'uploads')
   });
+});
+
+// Test endpoint for file serving
+app.get('/api/test-uploads', (req, res) => {
+  const fs = require('fs');
+  const uploadsPath = path.join(__dirname, 'uploads');
+  
+  try {
+    const files = fs.readdirSync(uploadsPath);
+    res.json({
+      uploadsPath,
+      files: files.slice(0, 10), // Show first 10 files
+      totalFiles: files.length
+    });
+  } catch (error) {
+    res.json({
+      uploadsPath,
+      error: error.message,
+      exists: fs.existsSync(uploadsPath)
+    });
+  }
 });
 
 // Socket.io connection handling
@@ -113,7 +160,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send-message', (data) => {
-    socket.to(data.groupId).emit('new-message', data);
+    console.log('📡 Broadcasting message to group:', data.groupId);
+    socket.to(data.groupId).emit('new-message', data.message);
   });
 
   socket.on('typing', (data) => {
@@ -127,6 +175,16 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('👋 User disconnected:', socket.id);
   });
+
+  // Handle errors
+  socket.on('error', (error) => {
+    console.error('🔌 Socket error:', error);
+  });
+});
+
+// Handle Socket.IO errors
+io.on('error', (error) => {
+  console.error('📡 Socket.IO error:', error);
 });
 
 const PORT = process.env.PORT || 3001;
@@ -137,5 +195,7 @@ server.listen(PORT, () => {
   console.log(`📡 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📁 Test uploads: http://localhost:${PORT}/api/test-uploads`);
+  console.log(`🗂️ Uploads directory: ${path.join(__dirname, 'uploads')}`);
   console.log('=====================================');
 });

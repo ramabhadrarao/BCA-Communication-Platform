@@ -1,6 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { Download, Play, ExternalLink, FileText, BarChart3, BookOpen, Check, CheckCheck } from 'lucide-react';
+import { Download, Play, ExternalLink, FileText, BarChart3, BookOpen, Check, CheckCheck, Youtube } from 'lucide-react';
 import { Message } from '../../types';
 
 interface MessageBubbleProps {
@@ -32,8 +32,33 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isOwnMessage }) 
     }
   };
 
+  const getYouTubeVideoId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
   const renderMessageContent = () => {
     switch (message.type) {
+      case 'image':
+        return (
+          <div className="space-y-2 max-w-xs">
+            <img 
+              src={`http://localhost:3001${message.fileUrl}`} 
+              alt={message.fileName || 'Image'}
+              className="rounded-lg w-full h-auto max-h-80 object-cover cursor-pointer"
+              onClick={() => window.open(`http://localhost:3001${message.fileUrl}`, '_blank')}
+              onError={(e) => {
+                console.error('Image failed to load:', message.fileUrl);
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            {message.content && message.content !== message.fileName && (
+              <p className="text-sm text-gray-800">{message.content}</p>
+            )}
+          </div>
+        );
+
       case 'file':
         return (
           <div className="bg-white border rounded-lg p-3 max-w-xs">
@@ -44,19 +69,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isOwnMessage }) 
                   {message.fileName}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {(message.fileSize! / 1024 / 1024).toFixed(2)} MB
+                  {message.fileSize ? (message.fileSize / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
                 </p>
               </div>
               <a
                 href={`http://localhost:3001${message.fileUrl}`}
-                download
+                download={message.fileName}
                 className="p-2 hover:bg-gray-100 rounded-lg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
               >
                 <Download className="w-4 h-4 text-gray-600" />
               </a>
             </div>
-            {message.content && (
-              <p className="text-sm text-gray-800">{message.content}</p>
+            {message.content && message.content !== message.fileName && (
+              <p className="text-sm text-gray-800 mt-2">{message.content}</p>
             )}
           </div>
         );
@@ -66,11 +94,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isOwnMessage }) 
           <div className="bg-white border rounded-lg p-3 max-w-xs">
             <div className="flex items-center space-x-3">
               <Play className="w-5 h-5 text-blue-500" />
-              <audio controls className="flex-1">
+              <audio controls className="flex-1" preload="metadata">
                 <source src={`http://localhost:3001${message.fileUrl}`} />
+                Your browser does not support the audio element.
               </audio>
             </div>
-            {message.content && (
+            {message.content && message.content !== message.fileName && (
               <p className="text-sm text-gray-800 mt-2">{message.content}</p>
             )}
           </div>
@@ -79,31 +108,53 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isOwnMessage }) 
       case 'video':
         return (
           <div className="space-y-2 max-w-xs">
-            <video controls className="rounded-lg w-full h-auto" style={{ maxHeight: '300px' }}>
+            <video 
+              controls 
+              className="rounded-lg w-full h-auto" 
+              style={{ maxHeight: '300px' }}
+              preload="metadata"
+            >
               <source src={`http://localhost:3001${message.fileUrl}`} />
+              Your browser does not support the video element.
             </video>
-            {message.content && (
+            {message.content && message.content !== message.fileName && (
               <p className="text-sm text-gray-800">{message.content}</p>
             )}
           </div>
         );
 
       case 'youtube':
+        const videoId = getYouTubeVideoId(message.youtubeUrl || message.content);
         return (
-          <div className="bg-white border rounded-lg p-3 max-w-xs">
-            <div className="flex items-center space-x-2 text-red-600 mb-2">
-              <ExternalLink className="w-4 h-4" />
+          <div className="bg-white border rounded-lg p-3 max-w-sm">
+            <div className="flex items-center space-x-2 text-red-600 mb-3">
+              <Youtube className="w-5 h-5" />
               <span className="text-sm font-medium">YouTube Video</span>
             </div>
+            
+            {videoId && (
+              <div className="mb-3">
+                <img 
+                  src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                  alt="YouTube thumbnail"
+                  className="w-full rounded cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => window.open(message.youtubeUrl || message.content, '_blank')}
+                />
+              </div>
+            )}
+            
             <a
-              href={message.youtubeUrl}
+              href={message.youtubeUrl || message.content}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline text-sm"
+              className="flex items-center space-x-2 text-blue-600 hover:underline text-sm"
+              onClick={(e) => e.stopPropagation()}
             >
-              {message.youtubeUrl}
+              <ExternalLink className="w-4 h-4" />
+              <span>Watch on YouTube</span>
             </a>
-            {message.content && (
+            
+            {message.content !== (message.youtubeUrl || message.content) && (
               <p className="text-sm text-gray-800 mt-2">{message.content}</p>
             )}
           </div>
@@ -111,25 +162,25 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isOwnMessage }) 
 
       case 'poll':
         return (
-          <div className="bg-white border rounded-lg p-4 max-w-sm">
+          <div className="bg-white border rounded-lg p-4 max-w-sm cursor-pointer hover:bg-gray-50 transition-colors">
             <div className="flex items-center space-x-2 text-purple-600 mb-3">
               <BarChart3 className="w-5 h-5" />
               <span className="text-sm font-medium">Poll Created</span>
             </div>
             <p className="text-sm font-medium text-gray-900 mb-2">{message.content}</p>
-            <p className="text-xs text-gray-500">Tap to view and vote</p>
+            <p className="text-xs text-gray-500">Click to view and vote</p>
           </div>
         );
 
       case 'assignment':
         return (
-          <div className="bg-white border rounded-lg p-4 max-w-sm">
+          <div className="bg-white border rounded-lg p-4 max-w-sm cursor-pointer hover:bg-gray-50 transition-colors">
             <div className="flex items-center space-x-2 text-orange-600 mb-3">
               <BookOpen className="w-5 h-5" />
               <span className="text-sm font-medium">Assignment Posted</span>
             </div>
             <p className="text-sm font-medium text-gray-900 mb-2">{message.content}</p>
-            <p className="text-xs text-gray-500">Tap to view details and submit</p>
+            <p className="text-xs text-gray-500">Click to view details and submit</p>
           </div>
         );
 

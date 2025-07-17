@@ -13,6 +13,9 @@ export const sendMessage = async (req, res) => {
     let fileName = '';
     let fileSize = 0;
 
+    console.log('📨 Sending message:', { groupId, content, type, youtubeUrl });
+    console.log('📎 File received:', req.file ? req.file.originalname : 'No file');
+
     // Handle file upload
     if (req.file) {
       const user = req.user;
@@ -23,16 +26,38 @@ export const sendMessage = async (req, res) => {
       const fileExtension = path.extname(req.file.originalname);
       const purpose = type === 'assignment' ? 'assignment' : 'message';
       
-      fileName = `${user.userId}_${user.role}_${purpose}_${dateStr}_${timeStr}${fileExtension}`;
-      fileUrl = `/uploads/${fileName}`;
+      // Use the actual stored filename from multer
+      fileName = req.file.originalname; // Keep original name for display
+      fileUrl = `/uploads/${req.file.filename}`; // Use multer's generated filename
       fileSize = req.file.size;
+
+      console.log('✅ File processed:', { fileName, fileUrl, fileSize });
+    }
+
+    // Determine message type based on file or content
+    let messageType = type;
+    if (req.file && !type) {
+      const fileExtension = path.extname(req.file.originalname).toLowerCase();
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      const videoExtensions = ['.mp4', '.avi', '.mov', '.wmv'];
+      const audioExtensions = ['.mp3', '.wav', '.ogg'];
+      
+      if (imageExtensions.includes(fileExtension)) {
+        messageType = 'image';
+      } else if (videoExtensions.includes(fileExtension)) {
+        messageType = 'video';
+      } else if (audioExtensions.includes(fileExtension)) {
+        messageType = 'audio';
+      } else {
+        messageType = 'file';
+      }
     }
 
     const message = new Message({
       sender: req.user.userId,
       group: groupId,
-      content,
-      type,
+      content: content || fileName || youtubeUrl || '',
+      type: messageType,
       fileUrl,
       fileName,
       fileSize,
@@ -49,8 +74,11 @@ export const sendMessage = async (req, res) => {
     const populatedMessage = await Message.findById(message._id)
       .populate('sender', 'name email role regdno photo');
 
+    console.log('✅ Message sent successfully:', populatedMessage._id);
+
     res.status(201).json(populatedMessage);
   } catch (error) {
+    console.error('❌ Error sending message:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -70,6 +98,7 @@ export const getMessages = async (req, res) => {
 
     res.json(messages.reverse());
   } catch (error) {
+    console.error('Error fetching messages:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -95,6 +124,7 @@ export const markAsRead = async (req, res) => {
 
     res.json({ message: 'Message marked as read' });
   } catch (error) {
+    console.error('Error marking message as read:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -119,6 +149,7 @@ export const deleteMessage = async (req, res) => {
     await Message.findByIdAndDelete(messageId);
     res.json({ message: 'Message deleted successfully' });
   } catch (error) {
+    console.error('Error deleting message:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
